@@ -41,37 +41,64 @@ def auto_detect_book_source(character_name):
 app = Flask(__name__)
 
 
-@app.route("/analyze-character", methods=["GET"])
-def analyze_character(filename):
+@app.route("/", methods=["GET"])
+def analyze_character():
     try:
-        character_name = request.args.get("q")
-        if not character_name:
-            return jsonify({"error": "Missing character parameter"}), 400
+        query = request.args.get("q")
+        if not query:
+            return jsonify({"error": "Missing query parameter 'q'"}), 400
 
-        book_source = request.args.get("source")
-        if not book_source:
-            book_source = auto_detect_book_source(character_name)
+        # If query begins with a capital letter, assume it's a character or place name
+        if query[0].isupper() and query[1].islower():
+            book_source = request.args.get("source")
+            if not book_source:
+                print("Auto-detecting book source...")
+                book_source = auto_detect_book_source(query)
+            else:
+                print(f"Using provided book source: {book_source}")
 
-        with open(f"data/{book_source}", "r") as f:
-            book_contents = f.read()
+            # If book_source is not a file, find any file with a name containing book_source as a substring
+            if not os.path.exists(f"data/{book_source}"):
+                for filename in os.listdir("data"):
+                    if book_source in filename:
+                        book_source = filename
+                        print(f"Auto-selected book source: {book_source}")
+                        break
 
-        # Strip contents beyond the first 3 occurrences of the character name:
-        character_occurrences = book_contents.split(character_name, 3)
-        block_lengths = [len(block) for block in character_occurrences]
-        print(f"Occurrence block lengths: {block_lengths}")
+            if book_source:
+                with open(f"data/{book_source}", "r") as f:
+                    book_contents = f.read()
+                # Strip contents beyond the first 3 occurrences of the character name:
+                character_occurrences = book_contents.split(query, 3)
+                block_lengths = [len(block) for block in character_occurrences]
+                print(f"Occurrence block lengths: {block_lengths}")
 
-        # response = model.generate_content(
-        #     f"Given the book excerpt below, could you describe who the character named {character_name} is introduced? The book excerpt follows:\n\n{book_contents}"
-        # )
+                all_but_last_blocks_joined = query.join(character_occurrences[:-1])
+                print(f"All but last blocks: {len(all_but_last_blocks_joined)}")
 
-        return jsonify(
-            {
-                "book_source": book_source,
-                "character_name": character_name,
-                "block_lengths": block_lengths,
-                "analysis": "(disabled)",
-            }
-        )
+                analysis = model.generate_content(
+                    f'Given the book excerpt below, provide a brief introduction to who or what "{query}" are? Try to avoid spoilers.\nThe book excerpt follows:\n\n{all_but_last_blocks_joined}'
+                )
+
+        else:
+            analysis = model.generate_content(
+                f'Provide a brief explanation of "{query}".'
+            )
+
+        accept_header = request.headers.get("Accept") or "application/json"
+
+        if "application/json" in accept_header:
+            return jsonify(
+                {
+                    "book_source": book_source,
+                    "character_name": query,
+                    "block_lengths": block_lengths,
+                    "analysis": analysis.text,
+                }
+            )
+        elif "text/html" in accept_header:
+            return f"<html><body><p>{analysis.text}</p></body></html>"
+        return analysis.text
 
     except FileNotFoundError:
         return jsonify({"error": "File not found"}), 404
