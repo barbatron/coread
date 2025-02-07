@@ -1,12 +1,24 @@
 from google import genai
+import os
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
-client = genai.Client(http_options={'api_version': 'v1'})
-response = client.models.generate_content(
-    model="gemini-2.0-flash-001", contents="How does AI work?"
+from dotenv import load_dotenv
+load_dotenv()
+
+goog_api_key = os.getenv("GOOGLE_GEMINI2_API_KEY")
+goog_project_id = os.getenv("GOOGLE_PROJECT_ID")
+
+vertexai.init(project=goog_project_id, location="us-central1")
+model = GenerativeModel("gemini-1.5-flash-002")
+
+# Read file from data directory:
+with open("data/pfh-exodus.txt", "r") as f:
+  book_contents = f.read()
+  print(f"Read book contents from file ({len(book_contents.split(" "))} words)")
+
+response = model.generate_content(
+    f"Given the book excerpt below, could you describe who the character named Finn is introduced? The book excerpt follows:\n\n{book_contents}"
 )
+
 print(response.text)
-# Example response:
-# Okay, let's break down how AI works. It's a broad field, so I'll focus on the ...
-#
-# Here's a simplified overview:
-# ...
